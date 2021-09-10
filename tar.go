@@ -32,24 +32,21 @@ func untarFileContent(r io.Reader, fileName string, w io.Writer) error {
 	for {
 		header, err := tr.Next()
 
-		switch {
-		case err == io.EOF:
+		if err == io.EOF {
 			return errors.New("file " + fileName + " not found in archive")
+		}
 
-		case err != nil:
+		if err != nil {
 			return err
+		}
 
-		case header == nil:
+		if header == nil {
 			continue
 		}
 
-		if header.Typeflag == tar.TypeReg {
-			if header.Name == fileName {
-				if _, err := io.Copy(w, tr); err != nil {
-					return err
-				}
-				return nil
-			}
+		if header.Typeflag == tar.TypeReg && header.Name == fileName {
+			_, err := io.Copy(w, tr)
+			return err
 		}
 	}
 }

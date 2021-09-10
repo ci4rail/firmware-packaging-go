@@ -43,7 +43,7 @@ func NewFirmwarePackageConsumerFromFile(fileName string) (*FirmwarePackageConsum
 	}
 	p.file = f
 
-	m, err := p.getManifest()
+	m, err := p.loadManifest()
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func (p *FirmwarePackageConsumer) File(w io.Writer) error {
 	return nil
 }
 
-func (p *FirmwarePackageConsumer) getManifest() (*FwManifest, error) {
+func (p *FirmwarePackageConsumer) loadManifest() (*FwManifest, error) {
 	mJSON := new(bytes.Buffer)
 
 	_, err := p.file.Seek(0, 0)
