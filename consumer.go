@@ -1,5 +1,5 @@
 /*
-Copyright © 2021 Ci4Rail GmbH <engineering@ci4rail.com>
+Copyright © 2024 Ci4Rail GmbH <engineering@ci4rail.com>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,31 +24,75 @@ import (
 	"os"
 )
 
+type fileReopen struct {
+	*os.File
+	fileName string
+}
+
+type bufferReopen struct {
+	*bytes.Reader
+	buffer []byte
+}
+
+type readReopen interface {
+	io.Reader
+	Reopen() error
+}
+
+func (r *fileReopen) Reopen() error {
+	r.File.Close()
+	f, err := os.Open(r.fileName)
+	if err != nil {
+		return err
+	}
+	r.File = f
+	return nil
+}
+
+func (r *bufferReopen) Reopen() error {
+	r.Reader = bytes.NewReader(r.buffer)
+	return nil
+}
+
 // FirmwarePackageConsumer is a handle to consume firmware package archive files
 type FirmwarePackageConsumer struct {
-	fileName string
-	file     *os.File
+	reopen   readReopen
 	manifest *FwManifest
 }
 
 // NewFirmwarePackageConsumerFromFile creates an object to work with the firmware package in fileName
-// The file is opened and the manifest is parsed and checed for validity. If not valid, an error is returned
+// The file is opened and the manifest is parsed and checked for validity. If not valid, an error is returned
 func NewFirmwarePackageConsumerFromFile(fileName string) (*FirmwarePackageConsumer, error) {
-	p := new(FirmwarePackageConsumer)
-	p.fileName = fileName
-
-	f, err := os.Open(fileName)
-	if err != nil {
-		return nil, errors.New("can't open " + fileName + ": " + err.Error())
+	r := &fileReopen{
+		fileName: fileName,
+		File:     nil,
 	}
-	p.file = f
-
-	m, err := p.loadManifest()
+	c := &FirmwarePackageConsumer{
+		reopen: r,
+	}
+	m, err := c.loadManifest()
 	if err != nil {
 		return nil, err
 	}
-	p.manifest = m
-	return p, nil
+	c.manifest = m
+	return c, nil
+}
+
+// NewFirmwarePackageConsumerFromBuffer creates an object to work with the firmware package in buffer
+// The buffer must contain the fwpkg tar file. The manifest is parsed and checked for validity. If not valid, an error is returned
+func NewFirmwarePackageConsumerFromBuffer(buffer []byte) (*FirmwarePackageConsumer, error) {
+	r := &bufferReopen{
+		buffer: buffer,
+	}
+	c := &FirmwarePackageConsumer{
+		reopen: r,
+	}
+	m, err := c.loadManifest()
+	if err != nil {
+		return nil, err
+	}
+	c.manifest = m
+	return c, nil
 }
 
 // Manifest returns the parsed manifest as ago struct
@@ -57,27 +101,28 @@ func (p *FirmwarePackageConsumer) Manifest() (manifest *FwManifest) {
 }
 
 // File extracts the firmware binary file from the firmware package and writes it to w
-func (p *FirmwarePackageConsumer) File(w io.Writer) error {
-
-	_, err := p.file.Seek(0, 0)
+func (c *FirmwarePackageConsumer) File(w io.Writer) error {
+	err := c.reopen.Reopen()
 	if err != nil {
 		return err
 	}
-	err = untarFileContent(p.file, "./"+p.manifest.File, w)
+
+	err = untarFileContent(c.reopen, "./"+c.manifest.File, w)
 	if err != nil {
-		return errors.New("can't untar firmware binary " + p.manifest.File + ": " + err.Error())
+		return errors.New("can't untar firmware binary " + c.manifest.File + ": " + err.Error())
 	}
 	return nil
 }
 
-func (p *FirmwarePackageConsumer) loadManifest() (*FwManifest, error) {
+func (c *FirmwarePackageConsumer) loadManifest() (*FwManifest, error) {
 	mJSON := new(bytes.Buffer)
 
-	_, err := p.file.Seek(0, 0)
+	err := c.reopen.Reopen()
 	if err != nil {
 		return nil, err
 	}
-	err = untarFileContent(p.file, "./manifest.json", mJSON)
+
+	err = untarFileContent(c.reopen, "./manifest.json", mJSON)
 	if err != nil {
 		return nil, errors.New("can't untar manifest: " + err.Error())
 	}
