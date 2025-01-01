@@ -2,6 +2,8 @@ package fwpkg
 
 import (
 	"bytes"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -91,6 +93,25 @@ func TestNewFirmwarePackageFromFile(t *testing.T) {
 	assert.Equal(t, "cpu01-tty_accdl", m.Name)
 
 	fwFile := new(bytes.Buffer)
+	err = p.File(fwFile)
+	assert.Nil(t, err)
+	assert.Equal(t, 155688, fwFile.Len())
+}
+
+func TestNewFirmwarePackageFromBuffer(t *testing.T) {
+	f, err := os.Open("testdata/t1.fwpkg")
+	assert.Nil(t, err)
+	defer f.Close()
+
+	buf, err := io.ReadAll(f)
+	assert.Nil(t, err)
+
+	p, err := NewFirmwarePackageConsumerFromBuffer(buf)
+	assert.Nil(t, err)
+	m := p.Manifest()
+	assert.Equal(t, "cpu01-tty_accdl", m.Name)
+	fwFile := new(bytes.Buffer)
+
 	err = p.File(fwFile)
 	assert.Nil(t, err)
 	assert.Equal(t, 155688, fwFile.Len())
